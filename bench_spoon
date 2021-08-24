@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import List
+
+
+def time_exec(repo_path: Path, args: List[str]) -> float:
+    """Runs a given program and returns execution time."""
+    start = time.time()
+    subprocess.run(
+        args,
+        cwd=repo_path,
+        stdout=sys.stderr,
+        stderr=sys.stderr,
+        check=True,
+    )
+    end = time.time()
+    return end - start
+
+
+def setup_javadocapi(repo_path: Path) -> None:
+    subprocess.run(
+        ["git", "clone", "https://github.com/I-Al-Istannen/JavadocApi"],
+        cwd=repo_path,
+        stdout=sys.stderr,
+        stderr=sys.stderr,
+        check=True
+    )
+    subprocess.run(
+        ["git", "checkout", "7b77330961bec4992129cef6bd7fe88a74f40c31"],
+        cwd=repo_path / "JavadocApi",
+        stdout=sys.stderr,
+        stderr=sys.stderr,
+        check=True
+    )
+    subprocess.run(
+        ["mvn", "package"],
+        cwd=repo_path / "JavadocApi",
+        stdout=sys.stderr,
+        stderr=sys.stderr,
+        check=True
+    )
+
+
+def compile_spoon(repo_path: Path) -> None:
+    with open(repo_path / "pom.xml", "r") as f:
+        pom_text = f.read()
+        pattern = re.compile("<plugins>.*</plugins>", re.MULTILINE | re.DOTALL)
+        pom_text = pattern.sub("", pom_text)
+        pattern = re.compile("^  <version>.+</version>", re.MULTILINE)
+        pom_text = pattern.sub("  <version>9.2.0-SNAPSHOT</version>", pom_text, count=1)
+
+    with open(repo_path / "pom.xml", "w") as f:
+        f.truncate()
+        f.write(pom_text)
+
+    subprocess.run(
+        ["mvn", "install", "-Dmaven.test.skip=true"],
+        cwd=repo_path,
+        stdout=sys.stderr,
+        stderr=sys.stderr,
+        check=True
+    )
+
+
+def setup_benchmark_source(repo_path: Path) -> None:
+    subprocess.run(
+        ["git", "clone", "https://github.com/inria/spoon", "Bench-Sources"],
+        cwd=repo_path,
+        stdout=sys.stderr,
+        stderr=sys.stderr,
+        check=True
+    )
+    subprocess.run(
+        ["git", "-C", "Bench-Sources", "checkout", "cc217b3c56be37435716132e59851f611507fb5d"],
+        cwd=repo_path,
+        stdout=sys.stderr,
+        stderr=sys.stderr,
+        check=True
+    )
+
+
+def time_javadocapi(repo_path: Path) -> float:
+    return time_exec(
+        repo_path / "JavadocApi",
+        [
+            "java",
+            "-XX:ActiveProcessorCount=1",
+            "-jar",
+            "target/JavadocApi.jar",
+            "src/main/resources/spoon-bench-config.json"
+        ]
+    )
+
+
+if __name__ == '__main__':
+    repo_path = Path(sys.argv[1]).resolve()
+
+    compile_spoon(repo_path)
+    setup_javadocapi(repo_path)
+    setup_benchmark_source(repo_path)
+
+    times = [
+        round(time_javadocapi(repo_path), 2),
+        round(time_javadocapi(repo_path), 2),
+        round(time_javadocapi(repo_path), 2),
+        round(time_javadocapi(repo_path), 2)
+    ]
+
+    print("""
+    {
+        "javadoc-api": {
+            "spoon-index": {
+               "unit": "seconds",
+                "interpretation": "LESS_IS_BETTER",
+                "values": {time}
+            }
+        }
+    }""".replace("{time}", str(times)))

@@ -4,6 +4,7 @@ import json
 import os
 import pathlib
 import sys
+from subprocess import check_output
 
 
 def main():
@@ -14,6 +15,13 @@ def main():
     [_, path] = sys.argv
     path = pathlib.Path(path).resolve()
     bench_script_path = path / "bench"
+
+    if not bench_script_path.exists():
+        root_hash = check_output(["git", "-C", path, "rev-list", "--max-parents=0", "HEAD"]).decode().strip()
+        print("Found hash ", root_hash, file=sys.stderr)
+
+        if root_hash == "1c74927d1776053107ec711a44485a8a8f12bd2c":
+            bench_script_path = pathlib.Path(os.path.dirname(sys.argv[0])) / "bench_spoon"
 
     try:
         os.execv(bench_script_path, [bench_script_path, path])
